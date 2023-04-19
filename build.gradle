@@ -1,0 +1,109 @@
+plugins {
+    id 'java'
+    id 'com.google.protobuf' version '0.9.1'
+    id 'org.springframework.boot' version '2.7.8'
+    id 'io.spring.dependency-management' version '1.1.0'
+    id 'idea'
+}
+
+group 'org.example'
+version '1.0-SNAPSHOT'
+
+def grpcVersion = '1.53.0'
+def protobufVersion = '3.21.7'
+def protocVersion = protobufVersion
+
+configurations {
+    jaxb
+}
+
+repositories {
+    maven { // The google mirror is less flaky than mavenCentral()
+        url "https://maven-central.storage-download.googleapis.com/maven2/" }
+    mavenCentral()
+    mavenLocal()
+}
+
+task genJaxb {
+    ext.sourcesDir = "${buildDir}/generated-sources/jaxb"
+    ext.classesDir = "${buildDir}/classes/jaxb"
+    ext.schema = "http://34.106.221.110:8083/ws/transactions.wsdl"
+
+    outputs.dir classesDir
+
+    doLast() {
+        project.ant {
+            taskdef name: "xjc", classname: "com.sun.tools.xjc.XJCTask",
+                    classpath: configurations.jaxb.asPath
+            mkdir(dir: sourcesDir)
+            mkdir(dir: classesDir)
+
+            xjc(destdir: sourcesDir, schema: schema,
+                    package: "com.example.consumingwebservice.wsdl") {
+                arg(value: "-wsdl")
+                produces(dir: sourcesDir, includes: "**/*.java")
+            }
+
+            javac(destdir: classesDir, source: 1.8, target: 1.8, debug: true,
+                    debugLevel: "lines,vars,source",
+                    classpath: configurations.jaxb.asPath) {
+                src(path: sourcesDir)
+                include(name: "**/*.java")
+                include(name: "*.java")
+            }
+
+            copy(todir: classesDir) {
+                fileset(dir: sourcesDir, erroronmissingdir: false) {
+                    exclude(name: "**/*.java")
+                }
+            }
+        }
+    }
+}
+
+dependencies {
+
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-web-services'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter'
+    runtimeOnly 'com.h2database:h2'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+
+    implementation 'org.springframework.ws:spring-ws-core'
+
+    implementation(files(genJaxb.classesDir).builtBy(genJaxb))
+
+    implementation 'org.glassfish.jaxb:jaxb-runtime'
+
+    jaxb "com.sun.xml.bind:jaxb-xjc:2.3.1"
+    jaxb "com.sun.xml.bind:jaxb-impl:2.3.1"
+    jaxb "javax.xml.bind:jaxb-api:2.3.1"
+    jaxb "org.glassfish.jaxb:jaxb-core:2.3.0.1"
+
+    implementation "io.grpc:grpc-protobuf:${grpcVersion}"
+    implementation "io.grpc:grpc-stub:${grpcVersion}"
+
+    implementation "com.google.protobuf:protobuf-java-util:${protobufVersion}"
+
+    implementation "io.grpc:grpc-netty-shaded:${grpcVersion}"
+
+    implementation 'org.json:json:20220320'
+
+}
+
+protobuf {
+    protoc { artifact = "com.google.protobuf:protoc:${protocVersion}" }
+    plugins {
+        grpc { artifact = "io.grpc:protoc-gen-grpc-java:${grpcVersion}" }
+    }
+    generateProtoTasks {
+        all()*.plugins { grpc {} }
+    }
+}
+
+
+
+test {
+    useJUnitPlatform()
+}
